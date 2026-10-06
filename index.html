@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="description" content="ブロックを積むたびに音が鳴り、あなたのプレイが1曲になる。ワンタップ音楽タワーゲーム。">
+<title>オトツミ - 積むたび、曲になる。</title>
+<style>
+:root{--bg:#120c2a;--fg:#f4f0ff;--muted:#b9b0d8;--accent:#ffd23f;--pink:#ff5c8a;--cyan:#3ddcff;--panel:rgba(18,12,42,.93);--line:rgba(255,255,255,.12)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--fg);font-family:"Hiragino Maru Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+.ui{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;pointer-events:none}
+.ui.bottom{align-items:flex-end;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+.ui.hidden{display:none}
+.panel{pointer-events:auto;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:22px 18px;width:min(380px,100%);text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:calc(100% - 8px);overflow:auto;animation:pop .35s cubic-bezier(.2,1.4,.4,1)}
+@keyframes pop{from{transform:translateY(20px) scale(.96);opacity:0}to{transform:none;opacity:1}}
+h1{font-size:46px;letter-spacing:.1em;line-height:1.1;background:linear-gradient(90deg,var(--pink),var(--accent),var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+.tag{color:var(--muted);margin:6px 0 16px;font-size:15px;letter-spacing:.15em}
+#songs{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+button{font:inherit;color:inherit;cursor:pointer;border:none}
+.song{display:flex;align-items:center;gap:12px;text-align:left;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:14px;padding:11px 14px;transition:transform .12s,background .12s}
+.song:hover:not(:disabled){background:rgba(255,255,255,.12);transform:translateX(3px)}
+.song:active:not(:disabled){transform:scale(.98)}
+.song .dot{width:14px;height:14px;border-radius:50%;flex:none;box-shadow:0 0 12px currentColor}
+.song b{display:block;font-size:16px}
+.song small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.song.locked{opacity:.45;cursor:default}
+.how{color:var(--muted);font-size:12.5px;line-height:1.7}
+.edition{margin-top:10px;font-size:12px;color:var(--accent)}
+.rank{font-size:14px;color:var(--muted);letter-spacing:.1em}
+.rank b{display:block;font-size:26px;color:var(--accent);letter-spacing:.05em;margin-top:2px}
+.score{font-size:64px;font-weight:800;line-height:1.05;margin:4px 0}
+.score small{font-size:20px;margin-left:4px;color:var(--muted)}
+.sub{font-size:15px;min-height:20px;color:var(--cyan);font-weight:700}
+.sub.new{color:var(--pink)}
+.stats{font-size:12.5px;color:var(--muted);margin:8px 0 14px;line-height:1.6}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btns button{padding:13px 8px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid var(--line);font-weight:700;font-size:15px}
+.btns button:active{transform:scale(.97)}
+.btns .primary{grid-column:1/-1;background:linear-gradient(90deg,var(--pink),#ff8a5c);border:none;font-size:18px;padding:15px;box-shadow:0 6px 24px rgba(255,92,138,.4)}
+#mute{position:fixed;top:max(12px,env(safe-area-inset-top));right:12px;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid var(--line);font-size:18px;z-index:5}
+#mute.off{opacity:.45;text-decoration:line-through}
+@media (orientation:landscape) and (max-height:560px){
+  .ui.bottom{justify-content:flex-end;align-items:center;padding-right:max(16px,env(safe-area-inset-right))}
+  .ui.bottom .panel{width:min(340px,52%);padding:14px}
+  .score{font-size:42px}
+  .btns button{padding:9px 6px}.btns .primary{padding:11px}
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="mute" aria-label="音のオンオフ">♪</button>
+
+<div id="title" class="ui"><div class="panel">
+  <h1>オトツミ</h1>
+  <p class="tag">積むたび、曲になる。</p>
+  <div id="songs"></div>
+  <p class="how">タップ / スペースキーでブロックを止める<br>ピッタリ止めると和音が鳴る。3連続で幅が回復</p>
+  <p class="edition" id="edition"></p>
+</div></div>
+
+<div id="over" class="ui bottom hidden"><div class="panel">
+  <div class="rank">あなたは<b id="rRank"></b></div>
+  <div class="score"><span id="rScore">0</span><small>段</small></div>
+  <div class="sub" id="rSub"></div>
+  <div class="stats" id="rStats"></div>
+  <div class="btns">
+    <button id="bRetry" class="primary">もう一回</button>
+    <button id="bShare">Xでシェア</button>
+    <button id="bMenu">曲をえらぶ</button>
+  </div>
+</div></div>
+
+<script>
+(() => {
+'use strict';
+
+// ===== 設定 =====
+const EDITION = 'demo';   // 無料体験版（2曲目以降のデータは入っていない）
+const GAME_URL = 'https://hiromichionii-cmd.github.io/ototsumi-demo/';
+const VW = 400, VH = 720; // 論理画面サイズ
+const BH = 26;            // ブロックの高さ
+const BASE_Y = 90;        // 土台の画面下からの位置
+const PERFECT = 4;        // ピッタリ判定の許容ズレ
+const MAXW = 200;         // ブロックの最大幅
+const UNLOCK = 15;        // 次の曲の解放に必要な段数
+const FONT = '"Hiragino Maru Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif';
+
+// 曲データ（すべて著作権の切れた曲。数字はMIDIノート番号、72=ド）
+const SONGS = [
+  {title:'きらきら星', sub:'フランス民謡', bg:['#1b1035','#3b1f66'], hue:200, step:9, root:48,
+   mel:[72,72,79,79,81,81,79,77,77,76,76,74,74,72,79,79,77,77,76,76,74,79,79,77,77,76,76,74,72,72,79,79,81,81,79,77,77,76,76,74,74,72]},
+  // 以下は完全版のみ（体験版には曲データを入れていない）
+  {title:'よろこびの歌', hue:42, locked:true},
+  {title:'かえるのうた', hue:95, locked:true},
+  {title:'メヌエット', hue:325, locked:true},
+  {title:'即興ジャズ', hue:15, locked:true},
+];
+const PENTA = [57,60,62,64,67,69,72,74,76,79,81,84];
+const RANKS = [[0,'鼻歌'],[5,'見習い奏者'],[10,'路上ミュージシャン'],[20,'楽団員'],[30,'コンサートマスター'],[45,'マエストロ'],[60,'音の神']];
+const rankOf = s => { let r = RANKS[0][1]; for (const [n, name] of RANKS) if (s >= n) r = name; return r; };
+
+// ===== 保存 =====
+const SKEY = 'ototsumi_v1';
+const save = {best: SONGS.map(() => 0), muted: false};
+try {
+  const s = JSON.parse(localStorage.getItem(SKEY));
+  if (s && Array.isArray(s.best)) { save.best = SONGS.map((_, i) => s.best[i] | 0); save.muted = !!s.muted; }
+} catch (e) {}
+const persist = () => { try { localStorage.setItem(SKEY, JSON.stringify(save)); } catch (e) {} };
+
+// ===== 画面 =====
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let cw = 0, ch = 0, dpr = 1, sc = 1, ox = 0, oy = 0;
+function resize() {
+  cw = innerWidth; ch = innerHeight; dpr = Math.min(2, devicePixelRatio || 1);
+  canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
+  sc = Math.min(cw / VW, ch / VH); ox = (cw - VW * sc) / 2; oy = (ch - VH * sc) / 2;
+}
+addEventListener('resize', resize); resize();
+
+const stars = Array.from({length: 70}, () => ({x: Math.random(), y: Math.random(), r: Math.random() * 1.4 + .3, p: Math.random() * .6 + .2, ph: Math.random() * 6}));
+const floaters = Array.from({length: 10}, () => ({x: Math.random(), y: Math.random(), s: 14 + Math.random() * 22, v: .01 + Math.random() * .02, g: Math.random() < .5 ? '♪' : '♫'}));
+
+// ===== 音 =====
+let ac = null, bus = null, drone = null;
+function initAudio() {
+  if (ac) { if (ac.state !== 'running' && !document.hidden) ac.resume(); return; }
+  try {
+    // iPhoneのマナーモード中でも鳴らす（対応ブラウザのみ）
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state !== 'running') ac.resume();
+    const comp = ac.createDynamicsCompressor(); comp.connect(ac.destination);
+    bus = ac.createGain(); bus.gain.value = save.muted ? 0 : .6; bus.connect(comp);
+    // 簡易リバーブ（やまびこ）
+    const dl = ac.createDelay(1); dl.delayTime.value = .24;
+    const fb = ac.createGain(); fb.gain.value = .3;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200;
+    const wet = ac.createGain(); wet.gain.value = .3;
+    bus.connect(dl); dl.connect(lp); lp.connect(fb); fb.connect(dl); lp.connect(wet); wet.connect(comp);
+  } catch (e) { ac = null; }
+}
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+function tone(m, when, dur, type, vol) {
+  if (!ac) return;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.value = mtof(m);
+  g.gain.setValueAtTime(.0001, when);
+  g.gain.exponentialRampToValueAtTime(vol, when + .008);
+  g.gain.exponentialRampToValueAtTime(.0001, when + dur);
+  o.connect(g); g.connect(bus); o.start(when); o.stop(when + dur + .05);
+}
+let noiseBuf = null;
+function noise(when, dur, vol, freq, type) {
+  if (!ac) return;
+  if (!noiseBuf) {
+    noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const s = ac.createBufferSource(); s.buffer = noiseBuf;
+  const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(vol, when); g.gain.exponentialRampToValueAtTime(.0001, when + dur);
+  s.connect(f); f.connect(g); g.connect(bus); s.start(when); s.stop(when + dur + .05);
+}
+function sNote(m, perfect, when) {
+  if (!ac) return;
+  const w = when === undefined ? ac.currentTime : when;
+  tone(m, w, .55, 'triangle', .32); tone(m + 12, w, .18, 'sine', .06);
+  if (perfect) { tone(m - 12, w, .7, 'sine', .18); tone(m + 7, w + .03, .5, 'triangle', .12); tone(m + 24, w + .06, .25, 'sine', .05); }
+}
+function sCut() { if (ac) noise(ac.currentTime, .09, .3, 1800, 'bandpass'); }
+function sMiss() {
+  if (!ac) return;
+  const t0 = ac.currentTime;
+  noise(t0, .4, .5, 500, 'lowpass');
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(220, t0); o.frequency.exponentialRampToValueAtTime(50, t0 + .5);
+  g.gain.setValueAtTime(.4, t0); g.gain.exponentialRampToValueAtTime(.0001, t0 + .55);
+  o.connect(g); g.connect(bus); o.start(t0); o.stop(t0 + .6);
+}
+function sFanfare(root) {
+  if (!ac) return;
+  const t0 = ac.currentTime;
+  [0, 4, 7, 12, 16, 19, 24].forEach((d, i) => tone(root + 24 + d, t0 + i * .06, .5, 'triangle', .14));
+}
+function startDrone(root) {
+  if (!ac) return;
+  stopDrone();
+  const t0 = ac.currentTime;
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 500;
+  const g = ac.createGain(); g.gain.setValueAtTime(.0001, t0); g.gain.exponentialRampToValueAtTime(.035, t0 + 1.5);
+  const os = [root, root + 7, root + 12].map(m => { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mtof(m); o.detune.value = Math.random() * 10 - 5; o.connect(lp); o.start(t0); return o; });
+  lp.connect(g); g.connect(bus);
+  drone = {os, g};
+}
+function stopDrone() {
+  if (!ac || !drone) return;
+  const t0 = ac.currentTime, d = drone; drone = null;
+  d.g.gain.cancelScheduledValues(t0); d.g.gain.setValueAtTime(Math.max(d.g.gain.value, .0001), t0);
+  d.g.gain.exponentialRampToValueAtTime(.0001, t0 + .6);
+  d.os.forEach(o => o.stop(t0 + .7));
+}
+
+// ===== ゲーム状態 =====
+let state = 'title', song = 0;
+let stack = [], cur = null, dir = 1, speed = 150;
+let score = 0, combo = 0, perfects = 0, maxCombo = 0, jazzIdx = 5;
+let debris = [], parts = [], rings = [], popups = [];
+let shake = 0, hitstop = 0, flash = 0, t = 0;
+let cam = 0, zoom = 1, base = VH - BASE_Y, camX = VW / 2;
+let replay = null, overReady = false, prevBest = 0, overLay = null;
+
+const baseBlock = () => ({x: (VW - MAXW) / 2, w: MAXW, hue: SONGS[song].hue, note: null, perfect: false, lit: 0});
+stack = [baseBlock()];
+
+const $ = id => document.getElementById(id);
+const uiTitle = $('title'), uiOver = $('over'), muteBtn = $('mute');
+
+function startGame(i) {
+  initAudio();
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  song = i; state = 'play'; overReady = false;
+  stack = [baseBlock()];
+  score = 0; combo = 0; perfects = 0; maxCombo = 0; jazzIdx = 5;
+  debris = []; parts = []; rings = []; popups = []; replay = null; overLay = null;
+  cam = 0; zoom = 1; base = VH - BASE_Y; camX = VW / 2; shake = 0; hitstop = 0;
+  uiTitle.classList.add('hidden'); uiOver.classList.add('hidden');
+  startDrone(SONGS[i].root);
+  spawnCur();
+}
+
+function spawnCur() {
+  const top = stack[stack.length - 1], n = stack.length;
+  const fromLeft = n % 2 === 1;
+  cur = {w: top.w, x: fromLeft ? -top.w * .55 : VW - top.w * .45, hue: SONGS[song].hue + n * SONGS[song].step, born: t};
+  dir = fromLeft ? 1 : -1;
+  speed = Math.min(130 + n * 5.5, 400);
+}
+
+function drop() {
+  if (state !== 'play' || !cur) return;
+  // 出た直後の入力は無視（連打・二重タップで即死しないように）
+  if (t - cur.born < .15) return;
+  // 最後の描画からタップまでの間に進んだぶんを補正
+  if (hitstop <= 0) {
+    cur.x += Math.min(.05, (performance.now() - last) / 1000) * speed * dir;
+    cur.x = Math.max(-cur.w * .55, Math.min(VW - cur.w * .45, cur.x));
+  }
+  const top = stack[stack.length - 1], n = stack.length;
+  const y = -(n + 1) * BH;
+  if (Math.abs(cur.x - top.x) <= PERFECT) {
+    combo++; perfects++; maxCombo = Math.max(maxCombo, combo);
+    let x = top.x, w = cur.w;
+    if (combo >= 3 && w < MAXW) { const nw = Math.min(MAXW, w + 8); x -= (nw - w) / 2; w = nw; popup('幅アップ！', '#3ddcff', 22, 40); }
+    place(x, w, true);
+    return;
+  }
+  const L = Math.max(cur.x, top.x), R = Math.min(cur.x + cur.w, top.x + top.w), ov = R - L;
+  if (ov <= 0) {
+    debris.push({x: cur.x, y, w: cur.w, vx: dir * 60, vy: -80, rot: 0, vr: dir * 2.5, hue: cur.hue, life: 0});
+    cur = null; gameOver(); return;
+  }
+  // はみ出た部分を切り落とす
+  if (cur.x < top.x) debris.push({x: cur.x, y, w: top.x - cur.x, vx: -90, vy: -60, rot: 0, vr: -3, hue: cur.hue, life: 0});
+  else debris.push({x: top.x + top.w, y, w: cur.x + cur.w - (top.x + top.w), vx: 90, vy: -60, rot: 0, vr: 3, hue: cur.hue, life: 0});
+  combo = 0;
+  sCut();
+  place(L, ov, false);
+}
+
+function place(x, w, perfect) {
+  const s = SONGS[song], n = stack.length;
+  let note;
+  if (s.mel) note = s.mel[(n - 1) % s.mel.length];
+  else { jazzIdx = Math.max(0, Math.min(PENTA.length - 1, jazzIdx + [-2, -1, -1, 0, 1, 1, 2][Math.random() * 7 | 0])); note = PENTA[jazzIdx]; }
+  const hue = s.hue + n * s.step;
+  stack.push({x, w, hue, note, perfect, lit: perfect ? 1 : .5});
+  score = n;
+  sNote(note, perfect);
+  const y = -(n + 1) * BH, cx = x + w / 2;
+  if (perfect) {
+    hitstop = .07; flash = .12; shake = Math.max(shake, 2);
+    rings.push({x: cx, y: y + BH / 2, r: w / 2, life: 0, hue});
+    burst(cx, y + BH / 2, 18, hue, 260, w / 2);
+    popup(combo > 1 ? `PERFECT ×${combo}` : 'PERFECT', '#ffd23f', 30, 0);
+  } else {
+    shake = Math.max(shake, 4);
+    burst(cx, y + BH / 2, 6, hue, 140, w / 2);
+  }
+  // 1曲完成ボーナス
+  const len = s.mel ? s.mel.length : 32;
+  if (n % len === 0) {
+    const top = stack[stack.length - 1];
+    const nw = Math.min(MAXW, top.w + 30); top.x -= (nw - top.w) / 2; top.w = nw;
+    popup(s.mel ? `♪「${s.title}」完成！` : '♪ セッション成功！', '#ff5c8a', 26, 80);
+    sFanfare(s.root); flash = .35;
+    burst(cx, y, 50, hue, 420, 30);
+  }
+  spawnCur();
+}
+
+function gameOver() {
+  state = 'over';
+  stopDrone(); sMiss();
+  shake = 12; flash = .3; combo = 0;
+  prevBest = save.best[song];
+  if (score > prevBest) { save.best[song] = score; persist(); }
+  replay = {start: t + .9, next: 1, iv: Math.min(.16, 7 / Math.max(1, score))};
+  const myStack = stack;
+  setTimeout(() => { if (state === 'over' && stack === myStack) showOver(); }, 1100);
+}
+
+function showOver() {
+  const s = SONGS[song];
+  $('rRank').textContent = rankOf(score);
+  $('rScore').textContent = score;
+  const sub = $('rSub');
+  if (score > prevBest && score > 0) { sub.textContent = prevBest > 0 ? '自己ベスト更新！' : '初記録！'; sub.className = 'sub new'; }
+  else { sub.textContent = `あと${prevBest - score + 1}段で自己ベスト`; sub.className = 'sub'; }
+  const lines = [`曲：${s.title}　ベスト：${save.best[song]}段`, `PERFECT ${perfects}回　最大コンボ ${maxCombo}`];
+  if (EDITION !== 'demo' && song + 1 < SONGS.length && prevBest < UNLOCK && score >= UNLOCK) lines.push(`🎉 新曲「${SONGS[song + 1].title}」が解放されました！`);
+  $('rStats').innerHTML = lines.map(l => `<div>${l}</div>`).join('');
+  uiOver.classList.remove('hidden');
+  overReady = true;
+  layoutOver();
+}
+
+// 結果パネルに隠れない位置へ塔を収める
+function layoutOver() {
+  if (uiOver.classList.contains('hidden')) return;
+  const r = uiOver.querySelector('.panel').getBoundingClientRect();
+  const scrTop = -oy / sc, scrBot = (ch - oy) / sc, scrLeft = -ox / sc;
+  const towerH = stack.length * BH;
+  let b, x, availW;
+  if (r.top > ch * .4) { b = (r.top - oy) / sc - 24; x = VW / 2; availW = cw / sc; }
+  else { const pl = (r.left - ox) / sc; b = scrBot - 30; x = (scrLeft + pl) / 2; availW = pl - scrLeft; }
+  const z = Math.min(1, (b - scrTop - 50) / towerH, availW * .8 / MAXW);
+  overLay = {base: b, x, zoom: Math.max(.05, z)};
+}
+
+function toTitle() {
+  stopDrone(); blurActive();
+  state = 'title'; overReady = false; cur = null;
+  stack = [baseBlock()]; debris = []; replay = null;
+  uiOver.classList.add('hidden');
+  buildSongs();
+  uiTitle.classList.remove('hidden');
+}
+
+function share() {
+  const s = SONGS[song];
+  const text = `オトツミ「${s.title}」で${score}段積んで【${rankOf(score)}】になった！\n積むたび、曲になる。\n#オトツミ`;
+  const url = 'https://x.com/intent/post?text=' + encodeURIComponent(text) + (GAME_URL ? '&url=' + encodeURIComponent(GAME_URL) : '');
+  window.open(url, '_blank', 'noopener');
+  blurActive();
+}
+function blurActive() { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); }
+
+// ===== 演出 =====
+function burst(x, y, n, hue, spd, spread) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, v = spd * (.3 + Math.random() * .7);
+    parts.push({x: x + (Math.random() - .5) * spread * 2, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60, life: 0, max: .5 + Math.random() * .5, hue: hue + Math.random() * 40 - 20, size: 2 + Math.random() * 3});
+  }
+}
+function popup(text, color, size, dy) { popups.push({text, color, size, y: 200 + dy, life: 0}); }
+
+// ===== 更新 =====
+function update(dt) {
+  t += dt;
+  shake = Math.max(0, shake - dt * 40);
+  flash = Math.max(0, flash - dt * 2.5);
+  for (const p of popups) p.life += dt;
+  popups = popups.filter(p => p.life < 1.1);
+  if (hitstop > 0) { hitstop -= dt; return; }
+
+  if (state === 'play' && cur) {
+    cur.x += dir * speed * dt;
+    const minX = -cur.w * .55, maxX = VW - cur.w * .45;
+    if (cur.x < minX) { cur.x = minX; dir = 1; }
+    if (cur.x > maxX) { cur.x = maxX; dir = -1; }
+  }
+  for (const d of debris) { d.vy += 1500 * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.rot += d.vr * dt; d.life += dt; }
+  debris = debris.filter(d => d.life < 3);
+  for (const p of parts) { p.vy += 500 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .98; p.life += dt; }
+  parts = parts.filter(p => p.life < p.max);
+  for (const r of rings) r.life += dt;
+  rings = rings.filter(r => r.life < .5);
+  for (const b of stack) if (b.lit > 0) b.lit = Math.max(0, b.lit - dt * 1.3);
+
+  // カメラ
+  let camT, zT, baseT, xT = VW / 2;
+  if (state === 'over' && overLay) {
+    camT = 0; baseT = overLay.base; zT = overLay.zoom; xT = overLay.x;
+  } else if (state === 'over') {
+    const towerH = stack.length * BH;
+    camT = 0; baseT = VH * .52; zT = Math.min(1, (VH * .5 - 70) / towerH);
+  } else {
+    camT = Math.max(0, (stack.length + 1) * BH - (VH - BASE_Y - 230)); baseT = VH - BASE_Y; zT = 1;
+  }
+  const k = Math.min(1, dt * (state === 'over' ? 3 : 7));
+  cam += (camT - cam) * k; zoom += (zT - zoom) * k; base += (baseT - base) * k; camX += (xT - camX) * k;
+
+  for (const f of floaters) { f.y -= f.v * dt; if (f.y < -.05) { f.y = 1.05; f.x = Math.random(); } }
+
+  // ゲームオーバー後、積んだ曲を再生
+  if (state === 'over' && replay) {
+    while (replay.next < stack.length && t >= replay.start + (replay.next - 1) * replay.iv) {
+      const b = stack[replay.next];
+      if (b.note != null) sNote(b.note, b.perfect);
+      b.lit = 1;
+      burst(b.x + b.w / 2, -(replay.next + 1) * BH + BH / 2, 3, b.hue, 120, b.w / 2);
+      replay.next++;
+    }
+  }
+}
+
+// ===== 描画 =====
+function rr(x, y, w, h, r) {
+  w = Math.max(0, w); h = Math.max(0, h);
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function drawBlock(x, y, w, hue, lit, perfect, alpha) {
+  ctx.globalAlpha = alpha === undefined ? 1 : alpha;
+  ctx.fillStyle = `hsl(${hue},72%,${56 + lit * 26}%)`;
+  rr(x, y + 1, w, BH - 2, 5); ctx.fill();
+  ctx.fillStyle = `hsla(${hue},90%,88%,${.45 + lit * .4})`;
+  ctx.fillRect(x + 4, y + 3, Math.max(0, w - 8), 3);
+  ctx.fillStyle = 'rgba(0,0,0,.16)';
+  ctx.fillRect(x + 3, y + BH - 7, Math.max(0, w - 6), 4);
+  if (perfect) { ctx.strokeStyle = `hsla(${hue},100%,92%,.7)`; ctx.lineWidth = 1.5; rr(x + .75, y + 1.75, w - 1.5, BH - 3.5, 5); ctx.stroke(); }
+  ctx.globalAlpha = 1;
+}
+
+let bgCache = null;
+function drawBg() {
+  const s = SONGS[song], key = song + ':' + ch;
+  if (!bgCache || bgCache.key !== key) {
+    const g = ctx.createLinearGradient(0, 0, 0, ch);
+    g.addColorStop(0, s.bg[0]); g.addColorStop(1, s.bg[1]);
+    bgCache = {key, g};
+  }
+  ctx.fillStyle = bgCache.g; ctx.fillRect(0, 0, cw, ch);
+  // 塔のてっぺんの色でうっすら光らせる
+  const top = stack[stack.length - 1];
+  const rg = ctx.createRadialGradient(cw / 2, ch * .35, 0, cw / 2, ch * .35, Math.max(cw, ch) * .7);
+  rg.addColorStop(0, `hsla(${top.hue},80%,60%,.18)`); rg.addColorStop(1, 'hsla(0,0%,0%,0)');
+  ctx.fillStyle = rg; ctx.fillRect(0, 0, cw, ch);
+  // 星（塔が伸びると流れる）
+  for (const st of stars) {
+    const y = ((st.y * ch + cam * st.p * sc) % ch + ch) % ch;
+    ctx.globalAlpha = .35 + .35 * Math.sin(t * 2 + st.ph);
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(st.x * cw, y, st.r, 0, 6.283); ctx.fill();
+  }
+  // ただよう音符
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = .07;
+  for (const f of floaters) {
+    ctx.font = `${Math.round(f.s * Math.max(1, sc))}px ${FONT}`;
+    ctx.fillText(f.g, f.x * cw + Math.sin(t + f.x * 9) * 12, f.y * ch);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function render() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawBg();
+  ctx.setTransform(dpr * sc, 0, 0, dpr * sc, dpr * ox, dpr * oy);
+
+  const sx = (Math.random() - .5) * shake, sy = (Math.random() - .5) * shake;
+  ctx.save();
+  ctx.translate(camX + sx, base + sy); ctx.scale(zoom, zoom); ctx.translate(-VW / 2, cam);
+
+  // 土台
+  const b0 = stack[0];
+  const pg = ctx.createLinearGradient(0, 0, 0, 400);
+  pg.addColorStop(0, 'rgba(255,255,255,.12)'); pg.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = pg; ctx.fillRect(b0.x - 14, 0, b0.w + 28, 400);
+
+  // ベスト記録のライン
+  const best = save.best[song];
+  if (best > 0 && state !== 'title') {
+    const by = -(best + 1) * BH;
+    ctx.strokeStyle = 'rgba(255,210,63,.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 6]);
+    ctx.beginPath(); ctx.moveTo(-200, by); ctx.lineTo(VW + 200, by); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,210,63,.8)'; ctx.font = `bold 12px ${FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+    ctx.fillText(`BEST ${best}`, 8, by - 3);
+  }
+
+  // 積んだブロック（画面外は描かない）
+  // 実際の画面の上端・下端をゲーム内の座標に直して判定
+  const viewTop = ((-oy / sc) - base) / zoom - cam - BH, viewBot = (((ch - oy) / sc) - base) / zoom - cam + BH;
+  for (let i = 0; i < stack.length; i++) {
+    const y = -(i + 1) * BH;
+    if (y > viewBot || y < viewTop) continue;
+    const b = stack[i];
+    drawBlock(b.x, y, b.w, b.hue, b.lit, b.perfect);
+  }
+
+  if (state === 'play' && cur) {
+    const n = stack.length, y = -(n + 1) * BH, top = stack[n - 1];
+    // 真下に落ちる位置のうっすらガイド
+    ctx.fillStyle = 'rgba(255,255,255,.05)'; ctx.fillRect(cur.x, y + BH, cur.w, BH);
+    // 光の影は1回だけかける（重くしないため）
+    ctx.shadowColor = `hsl(${cur.hue},90%,65%)`; ctx.shadowBlur = 18;
+    ctx.fillStyle = `hsl(${cur.hue},72%,62%)`; rr(cur.x, y + 1, cur.w, BH - 2, 5); ctx.fill();
+    ctx.shadowBlur = 0;
+    drawBlock(cur.x, y, cur.w, cur.hue, .25, false);
+    // ピッタリに近いと縁が光る
+    if (Math.abs(cur.x - top.x) <= PERFECT * 2) { ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1; rr(cur.x - 2, y - 1, cur.w + 4, BH + 2, 6); ctx.stroke(); }
+  }
+
+  for (const d of debris) {
+    ctx.save(); ctx.translate(d.x + d.w / 2, d.y + BH / 2); ctx.rotate(d.rot);
+    drawBlock(-d.w / 2, -BH / 2, d.w, d.hue, 0, false, Math.max(0, 1 - d.life / 3));
+    ctx.restore();
+  }
+
+  ctx.globalCompositeOperation = 'lighter';
+  for (const r of rings) {
+    const k = r.life / .5;
+    ctx.strokeStyle = `hsla(${r.hue},100%,75%,${1 - k})`; ctx.lineWidth = 3 * (1 - k) + .5;
+    ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r + k * 70, BH / 2 + k * 30, 0, 0, 6.283); ctx.stroke();
+  }
+  for (const p of parts) {
+    const k = 1 - p.life / p.max;
+    ctx.fillStyle = `hsla(${p.hue},100%,70%,${k})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size * k + .5, 0, 6.283); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.restore();
+
+  // HUD
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (state === 'play') {
+    ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = `13px ${FONT}`;
+    ctx.fillText(`♪ ${SONGS[song].title}`, VW / 2, 40);
+    ctx.fillStyle = '#fff'; ctx.font = `800 64px ${FONT}`;
+    ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 12;
+    ctx.fillText(score, VW / 2, 100);
+    ctx.shadowBlur = 0;
+  }
+  for (const p of popups) {
+    const k = p.life / 1.1, e = 1 - Math.pow(1 - Math.min(1, p.life * 6), 3);
+    ctx.globalAlpha = k > .7 ? (1 - k) / .3 : 1;
+    ctx.fillStyle = p.color; ctx.font = `800 ${p.size * (.6 + .4 * e)}px ${FONT}`;
+    ctx.fillText(p.text, VW / 2, p.y - p.life * 40);
+  }
+  ctx.globalAlpha = 1;
+
+  if (flash > 0) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = `rgba(255,255,255,${flash * .5})`; ctx.fillRect(0, 0, cw, ch);
+  }
+}
+
+let last = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  try { update(dt); render(); }
+  catch (e) { console.error(e); ctx.globalAlpha = 1; ctx.shadowBlur = 0; ctx.globalCompositeOperation = 'source-over'; }
+}
+requestAnimationFrame(frame);
+
+// ===== UI =====
+function isLocked(i) {
+  if (i === 0) return null;
+  if (EDITION === 'demo' || SONGS[i].locked) return 'demo';
+  return save.best[i - 1] < UNLOCK ? 'lock' : null;
+}
+function buildSongs() {
+  const el = $('songs'); el.innerHTML = '';
+  SONGS.forEach((s, i) => {
+    const locked = isLocked(i);
+    const b = document.createElement('button');
+    b.className = 'song' + (locked ? ' locked' : ''); b.disabled = !!locked;
+    const info = locked === 'demo' ? '🔒 完全版で解放' : locked ? `🔒「${SONGS[i - 1].title}」で${UNLOCK}段積むと解放` : `${s.sub}　BEST ${save.best[i]}段`;
+    b.innerHTML = `<span class="dot" style="background:hsl(${s.hue},75%,60%);color:hsl(${s.hue},75%,60%)"></span><span><b>${s.title}</b><small>${info}</small></span>`;
+    b.addEventListener('click', () => startGame(i));
+    el.appendChild(b);
+  });
+  $('edition').textContent = EDITION === 'demo' ? '体験版：1曲のみ／完全版（近日公開）で全5曲' : '';
+}
+function lastPlayable() { let i = song; while (i > 0 && isLocked(i)) i--; return i; }
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (!e.isPrimary || e.button > 0) return;
+  initAudio();
+  if (state === 'play') drop();
+});
+addEventListener('keydown', e => {
+  if (e.code !== 'Space' && e.code !== 'Enter') return;
+  if (state !== 'play' && document.activeElement && document.activeElement.tagName === 'BUTTON') return;
+  e.preventDefault();
+  if (e.repeat) return;
+  initAudio();
+  if (state === 'play') drop();
+  else if (state === 'over' && overReady) startGame(song);
+  else if (state === 'title') startGame(lastPlayable());
+});
+$('bRetry').addEventListener('click', () => startGame(song));
+$('bShare').addEventListener('click', share);
+$('bMenu').addEventListener('click', toTitle);
+function refreshMute() { muteBtn.classList.toggle('off', save.muted); if (bus) bus.gain.value = save.muted ? 0 : .6; }
+muteBtn.addEventListener('click', () => { initAudio(); save.muted = !save.muted; persist(); refreshMute(); muteBtn.blur(); });
+refreshMute();
+buildSongs();
+addEventListener('resize', layoutOver);
+// タブを離れたら音を止める
+document.addEventListener('visibilitychange', () => {
+  if (!ac) return;
+  if (document.hidden) ac.suspend(); else ac.resume();
+});
+})();
+</script>
+</body>
+</html>
